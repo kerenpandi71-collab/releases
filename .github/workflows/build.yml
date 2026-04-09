@@ -28,6 +28,7 @@ jobs:
         
         export TZ="Asia/Jakarta"
         export TIMESTAMP=$(date +"%Y%m%d")-$(date +"%H%M%S")
+        export CODENAME="earth"
         echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
         
         # Download AOSP Clang 
@@ -50,7 +51,7 @@ jobs:
         if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
           cp out/arch/arm64/boot/Image.gz-dtb Anykernel3/
           cd Anykernel3
-          zip -r9 "../Anykernel3-${{ github.event.inputs.zipname }}-$TIMESTAMP.zip" * -x '.git*' README.md '*placeholder'
+          zip -r9 "../Anykernel3-${{ github.event.inputs.zipname }}-$TIMESTAMP-$CODENAME.zip" * -x '.git*' README.md '*placeholder'
           cd ..
         fi
 
