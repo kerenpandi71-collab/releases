@@ -6,8 +6,8 @@ on:
       repository: { description: 'Repo', required: true, default: 'AbuRider/android_kernel_xiaomi_earth' }
       branch: { description: 'Branch', required: true, default: '16.2' }
       defconfig: { description: 'Defconfig', required: true, default: 'earth_defconfig' }
-      clang : { description: 'Clang URL', required: true, default: 'https://github.com' }
-      clang_branch : { description: 'Clang Branch', required: true, default: 'porn' }
+      zipname : { description: 'zip name', required: false, default: '-' }
+      clang : { description: 'Clang URL', required: true, default: 'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz' }
       kernelsu_branch: { description: 'KSU Branch', required: false, default: 'master' }
       kernelsu_setup : { description: 'KSU Setup Link', required: false, default: '-' }
 
@@ -30,7 +30,8 @@ jobs:
         echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
         
         # Download AOSP Clang 
-         ${{ github.event.inputs.clang }} -b ${{ github.event.inputs.clang_branch }} clang
+        mkdir -p clang
+        wget -qO- ${{ github.event.inputs.clang }} | tar -xz -C clang
         export PATH=$PWD/clang/bin:$PATH
         
         curl -LSs "${{ github.event.inputs.kernelsu_setup }}" | bash -s ${{ github.event.inputs.kernelsu_branch }}
@@ -67,4 +68,4 @@ jobs:
         path: |
           *.log
           *.zip
-        retention-days: 7
+        
