@@ -57,7 +57,7 @@ jobs:
         git clone https://github.com/AbuRider/Anykernel3 Anykernel3
         if [ -f out/arch/arm64/boot/Image ]; then
           cp out/arch/arm64/boot/Image Anykernel3/
-          cp arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb
+          cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb
           cd Anykernel3
           zip -r9 "../${{ github.event.inputs.zipname }}-${TIMESTAMP}-${CODENAME}.zip" * -x '.git*' README.md '*placeholder'
           cd ..
