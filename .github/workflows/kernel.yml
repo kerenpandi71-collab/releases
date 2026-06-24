@@ -10,52 +10,47 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y git bc bison flex libssl-dev make zip clang lld
-        
+        sudo apt install -y git bc bison flex libssl-dev make zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3
+
     - name: Clone Kernel Source 16.2 LineageOS
       run: |
         git clone --depth=1 https://github.com/kerenpandi71-collab/android_kernel_xiaomi_earth -b 16.2 kernel
-        
-    - name: Clone Proton Clang
-      run: |
-        git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
-        
+
     - name: Disable INCFS
       run: |
         cd kernel
         sed -i 's/CONFIG_INCREMENTAL_FS=y/# CONFIG_INCREMENTAL_FS is not set/' arch/arm64/configs/earth_defconfig
         sed -i 's/CONFIG_INCREMENTAL_FS=y/# CONFIG_INCREMENTAL_FS is not set/' arch/arm64/configs/vendor/earth_defconfig || true
-        
+
     - name: Setup SukiSU
       run: |
         cd kernel
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-        
+
     - name: Setup SUSFS
       run: |
         cd kernel
         git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git susfs
-        cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
+        cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch./
         cp susfs/kernel_patches/fs/susfs.c fs/ || true
         cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
-        
+
     - name: Build Kernel
       run: |
         cd kernel
-        export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
         export KBUILD_BUILD_USER=Fandi
         export KBUILD_BUILD_HOST=kerenpandi71
         make O=out ARCH=arm64 earth_defconfig
-        
+
         # Tambah config Droidspace
         echo "CONFIG_IPC_NS=y" >> out/.config
         echo "CONFIG_DEVTMPFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
         make O=out ARCH=arm64 olddefconfig
-        
-        make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        
+
+        make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
     - name: Pack AnyKernel3
       run: |
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
@@ -63,9 +58,9 @@ jobs:
         cd AnyKernel3
         sed -i 's/kernel.string=.*/kernel.string=Earth 4.19 LOS SukiSU Droidspace/' anykernel.sh
         sed -i 's/device.name1=.*/device.name1=earth/' anykernel.sh
-        cd ..
+        cd..
         zip -r9 Earth-4.19-LOS-Droidspace.zip AnyKernel3
-        
+
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
