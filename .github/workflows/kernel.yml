@@ -10,7 +10,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y git bc bison flex libssl-dev make zip clang lld llvm
+        sudo apt install -y git bc bison flex libssl-dev make zip clang lld
         
     - name: Clone Kernel Source 16.2 LineageOS
       run: |
@@ -54,7 +54,7 @@ jobs:
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
         make O=out ARCH=arm64 olddefconfig
         
-        make -j$(nproc) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+        make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         
     - name: Pack AnyKernel3
       run: |
