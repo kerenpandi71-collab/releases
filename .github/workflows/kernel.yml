@@ -1,15 +1,16 @@
-name: SukiSU + KPM Support 
+name: SukiSU + KPM + Droidspaces
 
 on:
   workflow_dispatch:
     inputs:
-      repository: { description: 'Repo', required: true, default: 'Kitauji-High-School/android_kernel_xiaomi_earth' }
+      repository: { description: 'Repo', required: true, default: 'kerenpandi71-collab/android_kernel_xiaomi_earth' }
       branch: { description: 'Branch', required: true, default: '16.2' }
       defconfig: { description: 'Defconfig', required: true, default: 'earth_defconfig' }
-      zipname : { description: 'zip name', required: false, default: '-' }
-      clang : { description: 'Clang URL', required: true, default: 'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz' }
-      kernelsu_branch: { description: 'KSU Branch', required: false, default: 'master' }
-      kernelsu_setup : { description: 'KSU Setup Link', required: false, default: '-' }
+      zipname: { description: 'zip name', required: false, default: 'Fandi-Earth' }
+      clang: { description: 'Clang URL', required: true, default: 'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz' }
+      kernelsu_branch: { description: 'KSU Branch', required: false, default: 'main' }
+      kernelsu_setup: { description: 'KSU Setup Link', required: false, default: 'https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh' }
+      susfs_branch: { description: 'SUSFS Branch', required: false, default: 'kernel-4.19' }
 
 jobs:
   build:
@@ -27,28 +28,46 @@ jobs:
         export TIMESTAMP=$(date +"%Y%m%d")-$(date +"%H%M%S")
         export CODENAME="earth"
         sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl
-        
+
         export TZ="Asia/Jakarta"
         echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
-        
-        # Download AOSP Clang 
+
+        # Download AOSP Clang
         mkdir -p clang
         wget -qO- ${{ github.event.inputs.clang }} | tar -xz -C clang
         export PATH=$PWD/clang/bin:$PATH
-        
+
+        # Setup SukiSU
         curl -LSs "${{ github.event.inputs.kernelsu_setup }}" | bash -s ${{ github.event.inputs.kernelsu_branch }}
+
+        # Setup SUSFS
+        git clone --depth=1 -b ${{ github.event.inputs.susfs_branch }} https://gitlab.com/simonpunk/susfs4ksu.git susfs
+        cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
+        cp susfs/kernel_patches/fs/susfs.c fs/
+        cp susfs/kernel_patches/include/linux/susfs.h include/linux/
+        patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
+
         export ARCH=arm64
-        export KBUILD_BUILD_USER="kumiko"
-        export KBUILD_BUILD_HOST="kitauji_quartet"
+        export KBUILD_BUILD_USER="fandi"
+        export KBUILD_BUILD_HOST="kerenpandi71"
         ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
-        
-        make $ARGS ${{ github.event.inputs.defconfig }} 2>&1 | tee defconfig.log || true
+
+        make $ARGS ${{ github.event.inputs.defconfig }}
+
+        # Tambah config Droidspaces
+        echo "CONFIG_IPC_NS=y" >> out/.config
+        echo "CONFIG_DEVTMPFS=y" >> out/.config
+        echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
+        make $ARGS olddefconfig
+
         make -j$(nproc) $ARGS 2>&1 | tee compile.log || true
 
     - name: Patch KPM
       run: |
         cd out/arch/arm64/boot
-        wget https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux ; chmod 777 patch_linux ; ./patch_linux
+        wget https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux
+        chmod 777 patch_linux
+        ./patch_linux
         mv -f oImage Image
         cd ../../../..
 
@@ -71,4 +90,3 @@ jobs:
         path: |
           *.log
           *.zip
-        
