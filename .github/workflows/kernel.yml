@@ -35,9 +35,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl
 
-        mkdir -p clang
-        wget -qO- https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz | tar -xz -C clang
-        export PATH=$PWD/clang/bin:$PATH
+        # Install Clang dari APT (lebih stabil)
+        sudo apt-get install -y clang-18 lld-18
+        export PATH=/usr/lib/llvm-18/bin:$PATH
+        export CC=clang-18
+        export LD=ld.lld-18
 
         # SUSFS (tanpa KernelSU)
         git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs
@@ -49,16 +51,16 @@ jobs:
         export ARCH=arm64
         export KBUILD_BUILD_USER="fandi"
         export KBUILD_BUILD_HOST="kerenpandi71"
-        ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
+        ARGS="O=out ARCH=arm64 CC=clang-18 LD=ld.lld-18 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
 
         make $ARGS ${{ github.event.inputs.defconfig }}
         # Tambahkan konfigurasi yang diperlukan
         echo "CONFIG_SUSFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
-        echo "CONFIG_IPC_NS=y" >> out/.config           # <-- INI YANG DITAMBAHKAN
-        echo "CONFIG_POSIX_MQUEUE=y" >> out/.config     # <-- Opsional
-        echo "CONFIG_SYSVIPC=y" >> out/.config          # <-- Opsional
+        echo "CONFIG_IPC_NS=y" >> out/.config
+        echo "CONFIG_POSIX_MQUEUE=y" >> out/.config
+        echo "CONFIG_SYSVIPC=y" >> out/.config
         make $ARGS olddefconfig
 
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
