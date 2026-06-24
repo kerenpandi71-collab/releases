@@ -1,68 +1,104 @@
-name: Earth 4.19 LineageOS SukiSU Droidspace
+name: SukiSU + KPM + Droidspaces
 
 on:
   workflow_dispatch:
+    inputs:
+      repository: { description: 'Repo', required: true, default: 'kerenpandi71-collab/android_kernel_xiaomi_earth' }
+      branch: { description: 'Branch', required: true, default: '16.2' }
+      defconfig: { description: 'Defconfig', required: true, default: 'earth_defconfig' }
+      zipname: { description: 'zip name', required: false, default: 'Fandi-Earth' }
+      clang: { description: 'Clang URL', required: true, default: 'https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz' }
+      kernelsu_branch: { description: 'KSU Branch', required: false, default: 'main' }
+      kernelsu_setup: { description: 'KSU Setup Link', required: false, default: 'https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh' }
+      susfs_branch: { description: 'SUSFS Branch', required: false, default: 'kernel-4.19' }
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Install Dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y git bc bison flex libssl-dev make zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.inputs.repository }}
+        ref: ${{ github.event.inputs.branch }}
+        submodules: recursive
 
-    - name: Clone Kernel Source 16.2 LineageOS
+    - name: Setup and Build
       run: |
-        git clone --depth=1 https://github.com/kerenpandi71-collab/android_kernel_xiaomi_earth -b 16.2 kernel
+        sudo apt-get update
+        export TIMESTAMP=$(date +"%Y%m%d")-$(date +"%H%M%S")
+        export CODENAME="earth"
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl
 
-    - name: Disable INCFS
-      run: |
-        cd kernel
-        sed -i 's/CONFIG_INCREMENTAL_FS=y/# CONFIG_INCREMENTAL_FS is not set/' arch/arm64/configs/earth_defconfig
-        sed -i 's/CONFIG_INCREMENTAL_FS=y/# CONFIG_INCREMENTAL_FS is not set/' arch/arm64/configs/vendor/earth_defconfig || true
+        export TZ="Asia/Jakarta"
+        echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
+        echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
 
-    - name: Setup SukiSU
-      run: |
-        cd kernel
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+        # Download AOSP Clang
+        mkdir -p clang
+        wget -qO- ${{ github.event.inputs.clang }} | tar -xz -C clang
+        export PATH=$PWD/clang/bin:$PATH
 
-    - name: Setup SUSFS
-      run: |
-        cd kernel
-        git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git susfs
+        # Setup SukiSU
+        curl -LSs "${{ github.event.inputs.kernelsu_setup }}" | bash -s ${{ github.event.inputs.kernelsu_branch }}
+
+        # Setup SUSFS
+        git clone --depth=1 -b ${{ github.event.inputs.susfs_branch }} https://gitlab.com/simonpunk/susfs4ksu.git susfs
         cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
         cp susfs/kernel_patches/fs/susfs.c fs/ || true
         cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
 
-    - name: Build Kernel
-      run: |
-        cd kernel
-        export KBUILD_BUILD_USER=Fandi
-        export KBUILD_BUILD_HOST=kerenpandi71
-        make O=out ARCH=arm64 earth_defconfig
+        export ARCH=arm64
+        export KBUILD_BUILD_USER="fandi"
+        export KBUILD_BUILD_HOST="kerenpandi71"
+        ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
 
-        # Tambah config Droidspace
+        make $ARGS ${{ github.event.inputs.defconfig }}
+
+        # Tambah config Droidspaces
         echo "CONFIG_IPC_NS=y" >> out/.config
         echo "CONFIG_DEVTMPFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
-        make O=out ARCH=arm64 olddefconfig
+        make $ARGS olddefconfig
 
-        make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        make -j$(nproc) $ARGS 2>&1 | tee compile.log || true
 
-    - name: Pack AnyKernel3
+    - name: Patch KPM
       run: |
-        git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
-        cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-        cd AnyKernel3
-        sed -i 's/kernel.string=.*/kernel.string=Earth 4.19 LOS SukiSU Droidspace/' anykernel.sh
-        sed -i 's/device.name1=.*/device.name1=earth/' anykernel.sh
-        cd ..
-        zip -r9 Earth-4.19-LOS-Droidspace.zip AnyKernel3
+        if [ -f out/arch/arm64/boot/Image.gz ]; then
+          cp out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image
+        fi
+        if [ ! -f out/arch/arm64/boot/Image ]; then
+          echo "Kernel Image not found, build may have failed"
+          exit 1
+        fi
+        cd out/arch/arm64/boot
+        wget https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux
+        chmod 777 patch_linux
+        ./patch_linux || true
+        if [ -f oImage ]; then mv -f oImage Image; fi
+        cd ../../../..
 
-    - name: Upload
+    - name: Packing Anykernel3
+      run: |
+        export TIMESTAMP=${{ env.TIMESTAMP }}
+        export CODENAME="earth"
+        git clone https://github.com/AbuRider/Anykernel3 Anykernel3
+        if [ -f out/arch/arm64/boot/Image ]; then
+          cp out/arch/arm64/boot/Image Anykernel3/
+          cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb || true
+          cd Anykernel3
+          zip -r9 "../Anykernel3-${{ github.event.inputs.zipname }}-${TIMESTAMP}-${CODENAME}.zip" * -x '.git*'
+          cd ..
+        else
+          echo "No Image found, skipping zip"
+        fi
+
+    - name: Upload Artifacts
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: Earth-4.19-LOS-Droidspace
-        path: Earth-4.19-LOS-Droidspace.zip
+        name: Build-Result-${{ env.BUILD_TIME }}
+        path: |
+          *.log
+          *.zip
