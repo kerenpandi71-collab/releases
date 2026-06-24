@@ -23,9 +23,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-
     steps:
     - uses: actions/checkout@v4
       with:
@@ -42,7 +39,7 @@ jobs:
         wget -qO- https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz | tar -xz -C clang
         export PATH=$PWD/clang/bin:$PATH
 
-        # SUSFS patch
+        # SUSFS (tanpa KernelSU)
         git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs
         cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
         cp susfs/kernel_patches/fs/susfs.c fs/ || true
@@ -55,12 +52,13 @@ jobs:
         ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
 
         make $ARGS ${{ github.event.inputs.defconfig }}
-
-        # Tambah config Droidspaces wajib
-        scripts/config --file out/.config --enable CONFIG_IPC_NS
-        scripts/config --file out/.config --enable CONFIG_DEVTMPFS
-        scripts/config --file out/.config --enable CONFIG_DEVTMPFS_MOUNT
-
+        # Tambahkan konfigurasi yang diperlukan
+        echo "CONFIG_SUSFS=y" >> out/.config
+        echo "CONFIG_DEVTMPFS=y" >> out/.config
+        echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
+        echo "CONFIG_IPC_NS=y" >> out/.config           # <-- INI YANG DITAMBAHKAN
+        echo "CONFIG_POSIX_MQUEUE=y" >> out/.config     # <-- Opsional
+        echo "CONFIG_SYSVIPC=y" >> out/.config          # <-- Opsional
         make $ARGS olddefconfig
 
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
@@ -87,4 +85,3 @@ jobs:
         path: |
           *.zip
           compile.log
-          out/.config   # simpan config final untuk verifikasi
