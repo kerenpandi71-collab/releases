@@ -31,7 +31,7 @@ jobs:
       run: |
         cd kernel
         git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git susfs
-        cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch./
+        cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
         cp susfs/kernel_patches/fs/susfs.c fs/ || true
         cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
@@ -58,7 +58,7 @@ jobs:
         cd AnyKernel3
         sed -i 's/kernel.string=.*/kernel.string=Earth 4.19 LOS SukiSU Droidspace/' anykernel.sh
         sed -i 's/device.name1=.*/device.name1=earth/' anykernel.sh
-        cd..
+        cd ..
         zip -r9 Earth-4.19-LOS-Droidspace.zip AnyKernel3
 
     - name: Upload
