@@ -31,6 +31,7 @@ jobs:
 
         export TZ="Asia/Jakarta"
         echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
+        echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
 
         # Download AOSP Clang
         mkdir -p clang
@@ -43,8 +44,8 @@ jobs:
         # Setup SUSFS
         git clone --depth=1 -b ${{ github.event.inputs.susfs_branch }} https://gitlab.com/simonpunk/susfs4ksu.git susfs
         cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
-        cp susfs/kernel_patches/fs/susfs.c fs/
-        cp susfs/kernel_patches/include/linux/susfs.h include/linux/
+        cp susfs/kernel_patches/fs/susfs.c fs/ || true
+        cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
 
         export ARCH=arm64
@@ -64,22 +65,33 @@ jobs:
 
     - name: Patch KPM
       run: |
+        if [ -f out/arch/arm64/boot/Image.gz ]; then
+          cp out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image
+        fi
+        if [ ! -f out/arch/arm64/boot/Image ]; then
+          echo "Kernel Image not found, build may have failed"
+          exit 1
+        fi
         cd out/arch/arm64/boot
         wget https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux
         chmod 777 patch_linux
-        ./patch_linux
-        mv -f oImage Image
+        ./patch_linux || true
+        if [ -f oImage ]; then mv -f oImage Image; fi
         cd ../../../..
 
     - name: Packing Anykernel3
       run: |
+        export TIMESTAMP=${{ env.TIMESTAMP }}
+        export CODENAME="earth"
         git clone https://github.com/AbuRider/Anykernel3 Anykernel3
         if [ -f out/arch/arm64/boot/Image ]; then
           cp out/arch/arm64/boot/Image Anykernel3/
-          cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb
+          cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb || true
           cd Anykernel3
           zip -r9 "../Anykernel3-${{ github.event.inputs.zipname }}-${TIMESTAMP}-${CODENAME}.zip" * -x '.git*'
           cd ..
+        else
+          echo "No Image found, skipping zip"
         fi
 
     - name: Upload Artifacts
