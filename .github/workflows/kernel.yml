@@ -15,12 +15,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
     steps:
     - uses: actions/checkout@v4
       with:
         repository: ${{ github.event.inputs.repository }}
         ref: ${{ github.event.inputs.branch }}
         submodules: recursive
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20   # ganti ke 24 kalau sudah siap migrasi
 
     - name: Setup and Build
       run: |
@@ -33,15 +41,12 @@ jobs:
         echo "BUILD_TIME=$(date +'%H%M-%d%m%y')" >> $GITHUB_ENV
         echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
 
-        # Download AOSP Clang
         mkdir -p clang
         wget -qO- ${{ github.event.inputs.clang }} | tar -xz -C clang
         export PATH=$PWD/clang/bin:$PATH
 
-        # Setup SukiSU
         curl -LSs "${{ github.event.inputs.kernelsu_setup }}" | bash -s ${{ github.event.inputs.kernelsu_branch }}
 
-        # Setup SUSFS
         git clone --depth=1 -b ${{ github.event.inputs.susfs_branch }} https://gitlab.com/simonpunk/susfs4ksu.git susfs
         cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
         cp susfs/kernel_patches/fs/susfs.c fs/ || true
@@ -54,8 +59,6 @@ jobs:
         ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
 
         make $ARGS ${{ github.event.inputs.defconfig }}
-
-        # Tambah config Droidspaces
         echo "CONFIG_IPC_NS=y" >> out/.config
         echo "CONFIG_DEVTMPFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
@@ -102,3 +105,15 @@ jobs:
         path: |
           *.log
           *.zip
+
+    # Step tambahan untuk debug log
+    - name: Upload Debug Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Debug-Logs-${{ env.BUILD_TIME }}
+        path: |
+          out/arch/arm64/boot/*.o
+          out/arch/arm64/boot/*.d
+          out/arch/arm64/boot/*.cmd
+          out/arch/arm64/boot/*.log
