@@ -41,7 +41,6 @@ jobs:
         git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs
         cp susfs/kernel_patches/fs/susfs.c fs/
         cp susfs/kernel_patches/include/linux/susfs.h include/linux/
-        # Tanpa || true supaya ketahuan kalau gagal
         patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch
         echo "✅ SUSFS patch applied"
 
@@ -72,19 +71,19 @@ jobs:
         make $ARGS olddefconfig
 
         # Step 3: Tambah config SETELAH olddefconfig
-        cat >> out/.config << 'EOF'
-CONFIG_IPC_NS=y
-CONFIG_SUSFS=y
-CONFIG_KSU_SUSFS=y
-CONFIG_DEVTMPFS=y
-CONFIG_DEVTMPFS_MOUNT=y
-CONFIG_POSIX_MQUEUE=y
-CONFIG_SYSVIPC=y
-CONFIG_TCP_CONG_BBR=y
-CONFIG_DEFAULT_TCP_CONG="bbr"
-CONFIG_IKCONFIG=y
-CONFIG_IKCONFIG_PROC=y
-EOF
+        printf '%s\n' \
+          'CONFIG_IPC_NS=y' \
+          'CONFIG_SUSFS=y' \
+          'CONFIG_KSU_SUSFS=y' \
+          'CONFIG_DEVTMPFS=y' \
+          'CONFIG_DEVTMPFS_MOUNT=y' \
+          'CONFIG_POSIX_MQUEUE=y' \
+          'CONFIG_SYSVIPC=y' \
+          'CONFIG_TCP_CONG_BBR=y' \
+          'CONFIG_DEFAULT_TCP_CONG=bbr' \
+          'CONFIG_IKCONFIG=y' \
+          'CONFIG_IKCONFIG_PROC=y' \
+          >> out/.config
 
         # Step 4: Verifikasi config
         echo "=== Verifikasi Config ==="
