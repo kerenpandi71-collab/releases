@@ -39,9 +39,11 @@ jobs:
     - name: Apply SUSFS Patch
       run: |
         git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs
-        cp susfs/kernel_patches/fs/susfs.c fs/ || true
-        cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
-        patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch || true
+        cp susfs/kernel_patches/fs/susfs.c fs/
+        cp susfs/kernel_patches/include/linux/susfs.h include/linux/
+        # Tanpa || true supaya ketahuan kalau gagal
+        patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch
+        echo "✅ SUSFS patch applied"
 
     - name: Build Kernel
       run: |
@@ -66,31 +68,63 @@ jobs:
         # Step 1: Load defconfig
         make $ARGS ${{ github.event.inputs.defconfig }}
 
-        # Step 2: Resolve dependencies dulu
+        # Step 2: Resolve dependencies
         make $ARGS olddefconfig
 
-        # Step 3: Tambah config SETELAH olddefconfig (supaya tidak di-reset)
+        # Step 3: Tambah config SETELAH olddefconfig
         cat >> out/.config << 'EOF'
-        CONFIG_IPC_NS=y
-        CONFIG_SUSFS=y
-        CONFIG_KSU_SUSFS=y
-        CONFIG_DEVTMPFS=y
-        CONFIG_DEVTMPFS_MOUNT=y
-        CONFIG_POSIX_MQUEUE=y
-        CONFIG_SYSVIPC=y
-        EOF
+CONFIG_IPC_NS=y
+CONFIG_SUSFS=y
+CONFIG_KSU_SUSFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_SYSVIPC=y
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_TCP_CONG="bbr"
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+EOF
 
-        # Step 4: Verifikasi config penting
+        # Step 4: Verifikasi config
         echo "=== Verifikasi Config ==="
-        grep -E "CONFIG_IPC_NS|CONFIG_SUSFS|CONFIG_DEVTMPFS|CONFIG_SYSVIPC|CONFIG_POSIX_MQUEUE" out/.config
+        grep -E "CONFIG_IPC_NS|CONFIG_SUSFS|CONFIG_TCP_CONG_BBR|CONFIG_IKCONFIG" out/.config
 
         # Step 5: Build
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
 
-    - name: Verify IPC_NS Aktif
+    - name: Verify Features
       run: |
-        echo "=== Cek CONFIG_IPC_NS di hasil build ==="
-        grep CONFIG_IPC_NS out/.config && echo "✅ IPC_NS OK" || echo "❌ IPC_NS MISSING"
+        CONFIG=out/.config
+        check() {
+          grep -q "^${2}=y" $CONFIG \
+            && echo "  [✓] $1" \
+            || echo "  [✗] $1"
+        }
+        echo "=============================="
+        echo "  KERNEL FEATURE CHECKER"
+        echo "=============================="
+        echo "--- DroidSpaces ---"
+        check "IPC Namespace"    CONFIG_IPC_NS
+        check "PID Namespace"    CONFIG_PID_NS
+        check "Net Namespace"    CONFIG_NET_NS
+        check "OverlayFS"        CONFIG_OVERLAY_FS
+        check "devtmpfs"         CONFIG_DEVTMPFS
+        check "FUSE"             CONFIG_FUSE_FS
+        echo "--- Security ---"
+        check "SUSFS"            CONFIG_SUSFS
+        check "Seccomp"          CONFIG_SECCOMP
+        echo "--- Network ---"
+        check "WireGuard"        CONFIG_WIREGUARD
+        check "TUN/TAP"          CONFIG_TUN
+        check "BBR TCP"          CONFIG_TCP_CONG_BBR
+        echo "--- Performance ---"
+        check "zRAM"             CONFIG_ZRAM
+        check "LZ4"              CONFIG_LZ4_COMPRESS
+        check "schedutil"        CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+        echo "--- Debug/Config ---"
+        check "IKCONFIG_PROC"    CONFIG_IKCONFIG_PROC
+        echo "=============================="
 
     - name: Packing Anykernel3
       run: |
@@ -101,16 +135,14 @@ jobs:
         if [ -f out/arch/arm64/boot/Image ]; then
           git clone https://github.com/AbuRider/Anykernel3 Anykernel3
           cp out/arch/arm64/boot/Image Anykernel3/
-          # Salin DTB
           cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb || true
-          # Salin DTBO (sebelumnya tidak disertakan)
           cp out/arch/arm64/boot/dts/mediatek/earth.dtbo Anykernel3/dtbo || true
           cd Anykernel3
           zip -r9 "../${{ github.event.inputs.zipname }}-$(date +%Y%m%d).zip" * -x '.git*'
           cd ..
           echo "✅ Zip berhasil dibuat"
         else
-          echo "❌ Image tidak ditemukan, build gagal"
+          echo "❌ Image tidak ditemukan"
           exit 1
         fi
 
