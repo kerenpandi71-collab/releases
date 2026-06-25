@@ -1,4 +1,4 @@
-name: SUSFS + DroidSpace Build
+name: Clean Kernel Build (No SUSFS)
 
 on:
   workflow_dispatch:
@@ -40,28 +40,35 @@ jobs:
         export CC=clang-18
         export LD=ld.lld-18
 
-        # SUSFS (dengan ignore error patch)
-        git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs
-        cp susfs/kernel_patches/fs/susfs.c fs/ || true
-        cp susfs/kernel_patches/include/linux/susfs.h include/linux/ || true
-        patch -p1 < susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch || true
-        echo "✅ SUSFS patch applied (errors ignored)"
-
         export ARCH=arm64
         export KBUILD_BUILD_USER="fandi"
         export KBUILD_BUILD_HOST="kerenpandi71"
         ARGS="O=out ARCH=arm64 CC=clang-18 LD=ld.lld-18 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
 
+        # Step 1: Load defconfig
         make $ARGS ${{ github.event.inputs.defconfig }}
-        # Tambahkan konfigurasi yang diperlukan
-        echo "CONFIG_SUSFS=y" >> out/.config
+
+        # Step 2: Selesaikan semua dependensi bawaan (biar kernel "rapi")
+        make $ARGS olddefconfig
+
+        # Step 3: Tambahkan konfigurasi SETELAH olddefconfig (biar gak kena timpa)
         echo "CONFIG_DEVTMPFS=y" >> out/.config
         echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
         echo "CONFIG_IPC_NS=y" >> out/.config
         echo "CONFIG_POSIX_MQUEUE=y" >> out/.config
         echo "CONFIG_SYSVIPC=y" >> out/.config
-        make $ARGS olddefconfig
 
+        # Optimasi jaringan (ringan & bermanfaat)
+        echo "CONFIG_TCP_CONG_BBR=y" >> out/.config
+        echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\"" >> out/.config
+        echo "CONFIG_WIREGUARD=y" >> out/.config
+        echo "CONFIG_TUN=y" >> out/.config
+        echo "CONFIG_OVERLAY_FS=y" >> out/.config
+
+        # Biarkan governor default (schedutil) agar hemat baterai
+        # Tidak mengubah CONFIG_CPU_FREQ_GOV_PERFORMANCE
+
+        # Step 4: Build kernel (tanpa olddefconfig lagi)
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
 
     - name: Packing Anykernel3
