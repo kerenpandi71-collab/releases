@@ -1,4 +1,4 @@
-name: Clean Kernel Build (No SUSFS)
+name: Fandi-Earth Kernel Build
 
 on:
   workflow_dispatch:
@@ -36,53 +36,127 @@ jobs:
         sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl
         sudo apt-get install -y clang-18 lld-18
 
+    - name: Build Kernel
+      run: |
         export PATH=/usr/lib/llvm-18/bin:$PATH
-        export CC=clang-18
-        export LD=ld.lld-18
-
         export ARCH=arm64
         export KBUILD_BUILD_USER="fandi"
         export KBUILD_BUILD_HOST="kerenpandi71"
-        ARGS="O=out ARCH=arm64 CC=clang-18 LD=ld.lld-18 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
+
+        ARGS="O=out ARCH=arm64 \
+          CC=clang-18 \
+          LD=ld.lld-18 \
+          AR=llvm-ar \
+          NM=llvm-nm \
+          STRIP=llvm-strip \
+          OBJCOPY=llvm-objcopy \
+          OBJDUMP=llvm-objdump \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+          LLVM=1 \
+          LLVM_IAS=1"
 
         # Step 1: Load defconfig
         make $ARGS ${{ github.event.inputs.defconfig }}
 
-        # Step 2: Selesaikan semua dependensi bawaan (biar kernel "rapi")
+        # Step 2: Resolve dependencies
         make $ARGS olddefconfig
 
-        # Step 3: Tambahkan konfigurasi SETELAH olddefconfig (biar gak kena timpa)
-        echo "CONFIG_DEVTMPFS=y" >> out/.config
-        echo "CONFIG_DEVTMPFS_MOUNT=y" >> out/.config
-        echo "CONFIG_IPC_NS=y" >> out/.config
-        echo "CONFIG_POSIX_MQUEUE=y" >> out/.config
-        echo "CONFIG_SYSVIPC=y" >> out/.config
+        # Step 3: Tambah config peningkatan
+        printf '%s\n' \
+          'CONFIG_DEVTMPFS=y' \
+          'CONFIG_DEVTMPFS_MOUNT=y' \
+          'CONFIG_IPC_NS=y' \
+          'CONFIG_POSIX_MQUEUE=y' \
+          'CONFIG_SYSVIPC=y' \
+          'CONFIG_TCP_CONG_BBR=y' \
+          'CONFIG_DEFAULT_TCP_CONG=bbr' \
+          'CONFIG_NET_SCH_FQ=y' \
+          'CONFIG_NET_SCH_FQ_CODEL=y' \
+          'CONFIG_WIREGUARD=y' \
+          'CONFIG_TUN=y' \
+          'CONFIG_OVERLAY_FS=y' \
+          'CONFIG_PREEMPT=y' \
+          'CONFIG_HZ_300=y' \
+          'CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y' \
+          'CONFIG_CPU_IDLE=y' \
+          'CONFIG_ENERGY_MODEL=y' \
+          'CONFIG_NAMESPACES=y' \
+          'CONFIG_USER_NS=y' \
+          'CONFIG_CGROUP_NS=y' \
+          'CONFIG_MEMCG=y' \
+          'CONFIG_BLK_CGROUP=y' \
+          'CONFIG_IKCONFIG=y' \
+          'CONFIG_IKCONFIG_PROC=y' \
+          >> out/.config
 
-        # Optimasi jaringan (ringan & bermanfaat)
-        echo "CONFIG_TCP_CONG_BBR=y" >> out/.config
-        echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\"" >> out/.config
-        echo "CONFIG_WIREGUARD=y" >> out/.config
-        echo "CONFIG_TUN=y" >> out/.config
-        echo "CONFIG_OVERLAY_FS=y" >> out/.config
+        # Step 4: Verifikasi config penting
+        echo "=== Verifikasi Config ==="
+        grep -E "CONFIG_IPC_NS|CONFIG_TCP_CONG_BBR|CONFIG_NET_SCH_FQ|CONFIG_PREEMPT|CONFIG_MEMCG|CONFIG_IKCONFIG_PROC" out/.config
 
-        # Biarkan governor default (schedutil) agar hemat baterai
-        # Tidak mengubah CONFIG_CPU_FREQ_GOV_PERFORMANCE
-
-        # Step 4: Build kernel (tanpa olddefconfig lagi)
+        # Step 5: Build
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
+
+    - name: Verify Features
+      run: |
+        CONFIG=out/.config
+        check() {
+          grep -q "^${2}=y" $CONFIG \
+            && echo "  [✓] $1" \
+            || echo "  [✗] $1"
+        }
+        echo "=============================="
+        echo "   FANDI-EARTH FEATURE CHECK"
+        echo "=============================="
+        echo "--- DroidSpaces ---"
+        check "IPC Namespace"      CONFIG_IPC_NS
+        check "PID Namespace"      CONFIG_PID_NS
+        check "Net Namespace"      CONFIG_NET_NS
+        check "User Namespace"     CONFIG_USER_NS
+        check "OverlayFS"          CONFIG_OVERLAY_FS
+        check "devtmpfs"           CONFIG_DEVTMPFS
+        check "FUSE"               CONFIG_FUSE_FS
+        check "Memory Cgroup"      CONFIG_MEMCG
+        check "Block IO Cgroup"    CONFIG_BLK_CGROUP
+        echo "--- Network ---"
+        check "BBR TCP"            CONFIG_TCP_CONG_BBR
+        check "FQ Scheduler"       CONFIG_NET_SCH_FQ
+        check "FQ-CoDel"           CONFIG_NET_SCH_FQ_CODEL
+        check "WireGuard"          CONFIG_WIREGUARD
+        check "TUN/TAP"            CONFIG_TUN
+        echo "--- Gaming & Performance ---"
+        check "PREEMPT"            CONFIG_PREEMPT
+        check "HZ_300"             CONFIG_HZ_300
+        check "schedutil"          CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+        check "CPU Idle"           CONFIG_CPU_IDLE
+        check "Energy Model"       CONFIG_ENERGY_MODEL
+        echo "--- Battery ---"
+        check "Energy Model"       CONFIG_ENERGY_MODEL
+        check "CPU Idle"           CONFIG_CPU_IDLE
+        echo "--- Security ---"
+        check "Seccomp"            CONFIG_SECCOMP
+        echo "--- Debug ---"
+        check "IKCONFIG_PROC"      CONFIG_IKCONFIG_PROC
+        echo "=============================="
 
     - name: Packing Anykernel3
       run: |
         if [ ! -f out/arch/arm64/boot/Image ]; then
           cp out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image || true
         fi
+
         if [ -f out/arch/arm64/boot/Image ]; then
           git clone https://github.com/AbuRider/Anykernel3 Anykernel3
           cp out/arch/arm64/boot/Image Anykernel3/
           cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb || true
+          cp out/arch/arm64/boot/dts/mediatek/earth.dtbo Anykernel3/dtbo || true
           cd Anykernel3
           zip -r9 "../${{ github.event.inputs.zipname }}-$(date +%Y%m%d).zip" * -x '.git*'
           cd ..
+          echo "✅ Zip berhasil dibuat"
+        else
+          echo "❌ Image tidak ditemukan"
+          exit 1
         fi
 
     - name: Upload Artifacts
@@ -93,3 +167,4 @@ jobs:
         path: |
           *.zip
           compile.log
+          out/.config
