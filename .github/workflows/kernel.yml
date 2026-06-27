@@ -1,4 +1,4 @@
-name: Fandi-Earth Kernel Build
+name: Fandi-Earth Stable Gaming Lite Kernel
 
 on:
   workflow_dispatch:
@@ -18,11 +18,12 @@ on:
       zipname:
         description: 'zip name'
         required: false
-        default: 'Fandi-Earth'
+        default: 'Fandi-Earth-GamingLite'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v4
       with:
@@ -33,10 +34,11 @@ jobs:
     - name: Setup Build Environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl
-        sudo apt-get install -y clang-18 lld-18
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc zip \
+        gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 git wget curl \
+        clang-18 lld-18
 
-    - name: Build Kernel
+    - name: Build Kernel (Gaming Lite Stable)
       run: |
         export PATH=/usr/lib/llvm-18/bin:$PATH
         export ARCH=arm64
@@ -56,114 +58,89 @@ jobs:
           LLVM=1 \
           LLVM_IAS=1"
 
-        # Step 1: Load defconfig
+        # Load base defconfig
         make $ARGS ${{ github.event.inputs.defconfig }}
 
-        # Step 2: Resolve dependencies
+        # ==============================
+        # GAMING + BATTERY + NETWORK OPT
+        # ==============================
+        cat >> out/.config << 'EOF'
+
+# RAM + scheduling efficiency
+CONFIG_PREEMPT=y
+CONFIG_HZ_300=y
+CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+CONFIG_CPU_IDLE=y
+CONFIG_ENERGY_MODEL=y
+
+# memory + stability
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_OVERLAY_FS=y
+CONFIG_FUSE_FS=y
+
+# namespaces (DroidSpace safe)
+CONFIG_NAMESPACES=y
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_NET_NS=y
+CONFIG_UTS_NS=y
+
+# cgroup (performance control)
+CONFIG_CGROUPS=y
+CONFIG_MEMCG=y
+CONFIG_BLK_CGROUP=y
+
+# security (no overhead tinggi)
+CONFIG_SECCOMP=y
+CONFIG_SECCOMP_FILTER=y
+
+# network gaming optimization
+CONFIG_TCP_CONG_BBR=y
+CONFIG_NET_SCH_FQ=y
+CONFIG_NET_SCH_FQ_CODEL=y
+
+# wireless + tunnel
+CONFIG_WIREGUARD=y
+CONFIG_TUN=y
+
+# system info (safe debug)
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+EOF
+
+        # Resolve config
         make $ARGS olddefconfig
 
-        # Step 3: Tambah config peningkatan
-        printf '%s\n' \
-          'CONFIG_DEVTMPFS=y' \
-          'CONFIG_DEVTMPFS_MOUNT=y' \
-          'CONFIG_IPC_NS=y' \
-          'CONFIG_POSIX_MQUEUE=y' \
-          'CONFIG_SYSVIPC=y' \
-          'CONFIG_TCP_CONG_BBR=y' \
-          'CONFIG_DEFAULT_TCP_CONG=bbr' \
-          'CONFIG_NET_SCH_FQ=y' \
-          'CONFIG_NET_SCH_FQ_CODEL=y' \
-          'CONFIG_WIREGUARD=y' \
-          'CONFIG_TUN=y' \
-          'CONFIG_OVERLAY_FS=y' \
-          'CONFIG_PREEMPT=y' \
-          'CONFIG_HZ_300=y' \
-          'CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y' \
-          'CONFIG_CPU_IDLE=y' \
-          'CONFIG_ENERGY_MODEL=y' \
-          'CONFIG_NAMESPACES=y' \
-          'CONFIG_USER_NS=y' \
-          'CONFIG_CGROUP_NS=y' \
-          'CONFIG_MEMCG=y' \
-          'CONFIG_BLK_CGROUP=y' \
-          'CONFIG_IKCONFIG=y' \
-          'CONFIG_IKCONFIG_PROC=y' \
-          >> out/.config
-
-        # Step 4: Verifikasi config penting
-        echo "=== Verifikasi Config ==="
-        grep -E "CONFIG_IPC_NS|CONFIG_TCP_CONG_BBR|CONFIG_NET_SCH_FQ|CONFIG_PREEMPT|CONFIG_MEMCG|CONFIG_IKCONFIG_PROC" out/.config
-
-        # Step 5: Build
+        # Build kernel
         make -j$(nproc) $ARGS 2>&1 | tee compile.log
 
-    - name: Verify Features
+    - name: Verify Gaming Features
       run: |
-        CONFIG=out/.config
-        check() {
-          grep -q "^${2}=y" $CONFIG \
-            && echo "  [✓] $1" \
-            || echo "  [✗] $1"
-        }
-        echo "=============================="
-        echo "   FANDI-EARTH FEATURE CHECK"
-        echo "=============================="
-        echo "--- DroidSpaces ---"
-        check "IPC Namespace"      CONFIG_IPC_NS
-        check "PID Namespace"      CONFIG_PID_NS
-        check "Net Namespace"      CONFIG_NET_NS
-        check "User Namespace"     CONFIG_USER_NS
-        check "OverlayFS"          CONFIG_OVERLAY_FS
-        check "devtmpfs"           CONFIG_DEVTMPFS
-        check "FUSE"               CONFIG_FUSE_FS
-        check "Memory Cgroup"      CONFIG_MEMCG
-        check "Block IO Cgroup"    CONFIG_BLK_CGROUP
-        echo "--- Network ---"
-        check "BBR TCP"            CONFIG_TCP_CONG_BBR
-        check "FQ Scheduler"       CONFIG_NET_SCH_FQ
-        check "FQ-CoDel"           CONFIG_NET_SCH_FQ_CODEL
-        check "WireGuard"          CONFIG_WIREGUARD
-        check "TUN/TAP"            CONFIG_TUN
-        echo "--- Gaming & Performance ---"
-        check "PREEMPT"            CONFIG_PREEMPT
-        check "HZ_300"             CONFIG_HZ_300
-        check "schedutil"          CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-        check "CPU Idle"           CONFIG_CPU_IDLE
-        check "Energy Model"       CONFIG_ENERGY_MODEL
-        echo "--- Battery ---"
-        check "Energy Model"       CONFIG_ENERGY_MODEL
-        check "CPU Idle"           CONFIG_CPU_IDLE
-        echo "--- Security ---"
-        check "Seccomp"            CONFIG_SECCOMP
-        echo "--- Debug ---"
-        check "IKCONFIG_PROC"      CONFIG_IKCONFIG_PROC
-        echo "=============================="
+        echo "=== GAMING LITE CHECK ==="
+        grep -E "CONFIG_TCP_CONG_BBR|CONFIG_NET_SCH_FQ|CONFIG_PREEMPT|CONFIG_HZ_300|CONFIG_MEMCG" out/.config || true
+        echo "========================="
 
-    - name: Packing Anykernel3
+    - name: Package Anykernel3
       run: |
-        if [ ! -f out/arch/arm64/boot/Image ]; then
-          cp out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image || true
+        if [ -f out/arch/arm64/boot/Image.gz ]; then
+          gunzip -c out/arch/arm64/boot/Image.gz > out/arch/arm64/boot/Image
         fi
 
-        if [ -f out/arch/arm64/boot/Image ]; then
-          git clone https://github.com/AbuRider/Anykernel3 Anykernel3
-          cp out/arch/arm64/boot/Image Anykernel3/
-          cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb || true
-          cp out/arch/arm64/boot/dts/mediatek/earth.dtbo Anykernel3/dtbo || true
-          cd Anykernel3
-          zip -r9 "../${{ github.event.inputs.zipname }}-$(date +%Y%m%d).zip" * -x '.git*'
-          cd ..
-          echo "✅ Zip berhasil dibuat"
-        else
-          echo "❌ Image tidak ditemukan"
-          exit 1
-        fi
+        git clone https://github.com/AbuRider/Anykernel3 Anykernel3
 
-    - name: Upload Artifacts
-      if: always()
+        cp out/arch/arm64/boot/Image Anykernel3/ 2>/dev/null || true
+        cp out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/ 2>/dev/null || true
+        cp out/arch/arm64/boot/dts/mediatek/earth.dtbo Anykernel3/ 2>/dev/null || true
+
+        cd Anykernel3
+        zip -r9 "../${{ github.event.inputs.zipname }}-gaminglite.zip" . -x ".git*"
+        cd ..
+
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Build-Result
+        name: Gaming-Lite-Kernel
         path: |
           *.zip
           compile.log
